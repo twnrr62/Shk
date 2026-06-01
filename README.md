@@ -4,6 +4,7 @@ local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local player = Players.LocalPlayer
 local camera = workspace.CurrentCamera
+local mouse = player:GetMouse()
 
 -- ========== CONFIGURAÇÕES ==========
 local settings = {
@@ -21,17 +22,23 @@ local settings = {
     panelMinimized = false
 }
 
+-- ========== VARIÁVEIS DE CONTROLE ==========
+local isShooting = false
+local currentTarget = nil
+local espObjects = {}
+local originalCameraCFrame = nil
+
 -- ========== CRIAR INTERFACE ==========
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "AimbotSystem"
 screenGui.IgnoreGuiInset = true
 screenGui.Parent = player:WaitForChild("PlayerGui")
 
--- ========== CÍRCULO FOV (TRANSPARENTE, BORDA COLORIDA, CENTRO VAZIO) ==========
+-- ========== CÍRCULO FOV ==========
 local fovCircle = Instance.new("Frame")
 fovCircle.Size = UDim2.new(0, settings.fovRadius * 2, 0, settings.fovRadius * 2)
 fovCircle.Position = UDim2.new(0.5, -settings.fovRadius, 0.5, -settings.fovRadius)
-fovCircle.BackgroundTransparency = 1  -- Completamente transparente
+fovCircle.BackgroundTransparency = 1
 fovCircle.BorderSizePixel = 3
 fovCircle.BorderColor3 = Color3.new(1, 0.85, 0)
 fovCircle.ZIndex = 10
@@ -41,7 +48,7 @@ local circleCorner = Instance.new("UICorner")
 circleCorner.CornerRadius = UDim.new(1, 0)
 circleCorner.Parent = fovCircle
 
--- ========== PAINEL UI COM MINIMIZAR ==========
+-- ========== PAINEL UI ==========
 local menuFrame = Instance.new("Frame")
 menuFrame.Size = UDim2.new(0, 280, 0, 400)
 menuFrame.Position = UDim2.new(0, 10, 0.5, -200)
@@ -57,7 +64,7 @@ local menuCorner = Instance.new("UICorner")
 menuCorner.CornerRadius = UDim.new(0, 8)
 menuCorner.Parent = menuFrame
 
--- Barra de título com botão minimizar
+-- Barra de título
 local titleBar = Instance.new("Frame")
 titleBar.Size = UDim2.new(1, 0, 0, 35)
 titleBar.Position = UDim2.new(0, 0, 0, 0)
@@ -72,14 +79,13 @@ local menuTitle = Instance.new("TextLabel")
 menuTitle.Size = UDim2.new(0.8, 0, 1, 0)
 menuTitle.Position = UDim2.new(0, 10, 0, 0)
 menuTitle.BackgroundTransparency = 1
-menuTitle.Text = "⚡ AIMBOT + ESP v2 ⚡"
+menuTitle.Text = "⚡ AIMBOT + ESP v3 ⚡"
 menuTitle.TextColor3 = Color3.new(1, 0.85, 0)
 menuTitle.Font = Enum.Font.GothamBold
 menuTitle.TextSize = 12
 menuTitle.TextXAlignment = Enum.TextXAlignment.Left
 menuTitle.Parent = titleBar
 
--- Botão minimizar
 local minimizeBtn = Instance.new("TextButton")
 minimizeBtn.Size = UDim2.new(0, 30, 1, 0)
 minimizeBtn.Position = UDim2.new(1, -35, 0, 0)
@@ -94,17 +100,15 @@ local minimizeCorner = Instance.new("UICorner")
 minimizeCorner.CornerRadius = UDim.new(0, 4)
 minimizeCorner.Parent = minimizeBtn
 
--- Container do conteúdo (para minimizar)
 local contentContainer = Instance.new("Frame")
 contentContainer.Size = UDim2.new(1, 0, 1, -35)
 contentContainer.Position = UDim2.new(0, 0, 0, 35)
 contentContainer.BackgroundTransparency = 1
 contentContainer.Parent = menuFrame
 
--- ========== CONTEÚDO DO PAINEL ==========
+-- Conteúdo do painel
 local scrollY = 0
 
--- Seção Aimbot
 local aimbotSection = Instance.new("TextLabel")
 aimbotSection.Size = UDim2.new(0.95, 0, 0, 25)
 aimbotSection.Position = UDim2.new(0.025, 0, 0, scrollY)
@@ -116,7 +120,6 @@ aimbotSection.Font = Enum.Font.GothamBold
 aimbotSection.Parent = contentContainer
 scrollY = scrollY + 30
 
--- Botão Aimbot Toggle
 local aimbotBtn = Instance.new("TextButton")
 aimbotBtn.Size = UDim2.new(0.45, 0, 0, 35)
 aimbotBtn.Position = UDim2.new(0.025, 0, 0, scrollY)
@@ -131,7 +134,6 @@ local aimbotBtnCorner = Instance.new("UICorner")
 aimbotBtnCorner.CornerRadius = UDim.new(0, 4)
 aimbotBtnCorner.Parent = aimbotBtn
 
--- Botão Modo (Legit/Rage)
 local modeBtn = Instance.new("TextButton")
 modeBtn.Size = UDim2.new(0.45, 0, 0, 35)
 modeBtn.Position = UDim2.new(0.525, 0, 0, scrollY)
@@ -147,7 +149,6 @@ modeBtnCorner.CornerRadius = UDim.new(0, 4)
 modeBtnCorner.Parent = modeBtn
 scrollY = scrollY + 45
 
--- Slider FOV
 local fovLabel = Instance.new("TextLabel")
 fovLabel.Size = UDim2.new(0.9, 0, 0, 20)
 fovLabel.Position = UDim2.new(0.05, 0, 0, scrollY)
@@ -174,7 +175,6 @@ inputCorner.CornerRadius = UDim.new(0, 4)
 inputCorner.Parent = fovInput
 scrollY = scrollY + 35
 
--- Seção ESP
 local espSection = Instance.new("TextLabel")
 espSection.Size = UDim2.new(0.95, 0, 0, 25)
 espSection.Position = UDim2.new(0.025, 0, 0, scrollY)
@@ -186,7 +186,6 @@ espSection.Font = Enum.Font.GothamBold
 espSection.Parent = contentContainer
 scrollY = scrollY + 30
 
--- Botões ESP Types
 local espTypes = {"box", "skeleton", "name", "distance", "line"}
 local espButtons = {}
 local espBtnY = scrollY
@@ -215,7 +214,6 @@ for i, espType in ipairs(espTypes) do
 end
 scrollY = scrollY + 40
 
--- Botão ESP Global
 local espGlobalBtn = Instance.new("TextButton")
 espGlobalBtn.Size = UDim2.new(0.9, 0, 0, 35)
 espGlobalBtn.Position = UDim2.new(0.05, 0, 0, scrollY)
@@ -231,12 +229,11 @@ espGlobalCorner.CornerRadius = UDim.new(0, 4)
 espGlobalCorner.Parent = espGlobalBtn
 scrollY = scrollY + 45
 
--- Status
 local statusLabel = Instance.new("TextLabel")
 statusLabel.Size = UDim2.new(0.9, 0, 0, 25)
 statusLabel.Position = UDim2.new(0.05, 0, 0, scrollY)
 statusLabel.BackgroundColor3 = Color3.new(0.1, 0.1, 0.15)
-statusLabel.Text = "● AIMBOT: LEGIT | FOV: " .. settings.fovRadius
+statusLabel.Text = "● ATIRE PARA MIRAR | FOV: " .. settings.fovRadius
 statusLabel.TextColor3 = Color3.new(0, 1, 0)
 statusLabel.TextSize = 9
 statusLabel.Font = Enum.Font.Gotham
@@ -246,14 +243,11 @@ local statusCorner = Instance.new("UICorner")
 statusCorner.CornerRadius = UDim.new(0, 4)
 statusCorner.Parent = statusLabel
 
--- Ajustar altura do container
 contentContainer.Size = UDim2.new(1, 0, 0, scrollY + 35)
 
--- ========== VARIÁVEIS GLOBAIS ==========
-local currentTarget = nil
-local espObjects = {}
+-- ========== FUNÇÕES DO AIMBOT ==========
 
--- ========== FUNÇÃO: ENCONTRAR JOGADOR MAIS PRÓXIMO ==========
+-- Encontrar jogador mais próximo
 local function getClosestPlayer()
     local myChar = player.Character
     local myRoot = myChar and myChar:FindFirstChild("HumanoidRootPart")
@@ -278,7 +272,7 @@ local function getClosestPlayer()
     return closest
 end
 
--- ========== FUNÇÃO: ENCONTRAR ALVO NO FOV (PARA LEGIT) ==========
+-- Encontrar alvo no FOV (para modo Legit)
 local function getTargetInFOV()
     local center = Vector2.new(camera.ViewportSize.X / 2, camera.ViewportSize.Y / 2)
     local closest = nil
@@ -304,40 +298,44 @@ local function getTargetInFOV()
     return closest
 end
 
--- ========== AIMBOT (COM MOVIMENTO DE CÂMERA LIVRE) ==========
-local lastTarget = nil
+-- Função para mirar no alvo (apenas no tiro)
+local function aimAtTarget(target)
+    if not target or not target.Character then return end
+    
+    local head = target.Character:FindFirstChild("Head")
+    if head then
+        camera.CFrame = CFrame.new(camera.CFrame.Position, head.Position)
+    end
+end
 
-RunService.RenderStepped:Connect(function()
+-- Detectar clique do mouse para atirar
+mouse.Button1Down:Connect(function()
     if not settings.aimbotEnabled then return end
+    
+    isShooting = true
     
     local target = nil
     
     if settings.aimbotMode == "rage" then
-        -- RAGE: gruda no mais próximo (independente da mira)
+        -- RAGE: mira no jogador mais próximo independente da mira
         target = getClosestPlayer()
+        if target then
+            aimAtTarget(target)
+        end
     else
-        -- LEGIT: só gruda se estiver dentro do FOV
+        -- LEGIT: só mira se estiver dentro do FOV
         target = getTargetInFOV()
-    end
-    
-    currentTarget = target
-    
-    if target and target.Character then
-        local head = target.Character:FindFirstChild("Head")
-        if head then
-            if settings.aimbotMode == "rage" then
-                -- RAGE: instantâneo
-                camera.CFrame = CFrame.new(camera.CFrame.Position, head.Position)
-            else
-                -- LEGIT: suave (igual primeira versão)
-                local targetCFrame = CFrame.new(camera.CFrame.Position, head.Position)
-                camera.CFrame = camera.CFrame:Lerp(targetCFrame, 0.15)
-            end
+        if target then
+            aimAtTarget(target)
         end
     end
+    
+    -- Reset após o tiro (delay para não travar a câmera)
+    task.wait(0.05)
+    isShooting = false
 end)
 
--- ========== ESP COMPLETO COM ESQUELETO ==========
+-- ========== ESP COMPLETO ==========
 local function getJoints(character)
     local joints = {
         head = character:FindFirstChild("Head"),
@@ -355,10 +353,8 @@ local function drawSkeleton(character, color, parent)
     local joints = getJoints(character)
     local lines = {}
     
-    -- Verificar se temos os joints necessários
     if not joints.humanoidRoot then return lines end
     
-    -- Conexões do esqueleto
     local connections = {
         {joints.humanoidRoot, joints.torso},
         {joints.torso, joints.head},
@@ -428,7 +424,6 @@ local function drawBox(character, color, parent)
 end
 
 local function updateESP()
-    -- Limpar ESP antigo
     for _, obj in pairs(espObjects) do
         pcall(function() obj:Destroy() end)
     end
@@ -446,16 +441,14 @@ local function updateESP()
             local head = char:FindFirstChild("Head")
             
             if hum and hum.Health > 0 and head then
-                local espColor = Color3.new(1, 0.85, 0) -- Amarelo padrão
+                local espColor = Color3.new(1, 0.85, 0)
                 local distance = myChar and myChar:FindFirstChild("HumanoidRootPart") and (myChar.HumanoidRootPart.Position - head.Position).Magnitude or 0
                 
-                -- Container para ESP deste player
                 local playerESP = Instance.new("Folder")
                 playerESP.Name = otherPlayer.Name
                 playerESP.Parent = screenGui
                 table.insert(espObjects, playerESP)
                 
-                -- Box ESP
                 if settings.espTypes.box then
                     local boxes = drawBox(char, espColor, playerESP)
                     for _, box in ipairs(boxes) do
@@ -463,7 +456,6 @@ local function updateESP()
                     end
                 end
                 
-                -- Skeleton ESP
                 if settings.espTypes.skeleton then
                     local skeleton = drawSkeleton(char, espColor, playerESP)
                     for _, bone in ipairs(skeleton) do
@@ -471,7 +463,6 @@ local function updateESP()
                     end
                 end
                 
-                -- Name e Distance (texto flutuante)
                 if settings.espTypes.name or settings.espTypes.distance then
                     local headPos, onScreen = camera:WorldToViewportPoint(head.Position)
                     if onScreen then
@@ -501,7 +492,6 @@ local function updateESP()
                     end
                 end
                 
-                -- Line connection
                 if settings.espTypes.line and myChar and myChar:FindFirstChild("HumanoidRootPart") then
                     local myRoot = myChar.HumanoidRootPart
                     local myPos, myOn = camera:WorldToViewportPoint(myRoot.Position)
@@ -536,7 +526,6 @@ aimbotBtn.MouseButton1Click:Connect(function()
     settings.aimbotEnabled = not settings.aimbotEnabled
     aimbotBtn.Text = settings.aimbotEnabled and "🔒 ON" or "🔒 OFF"
     aimbotBtn.BackgroundColor3 = settings.aimbotEnabled and Color3.new(0.2, 0.6, 0.2) or Color3.new(0.6, 0.2, 0.2)
-    
     fovCircle.BorderColor3 = settings.aimbotEnabled and Color3.new(0, 1, 0) or Color3.new(1, 0.85, 0)
 end)
 
@@ -544,7 +533,7 @@ modeBtn.MouseButton1Click:Connect(function()
     settings.aimbotMode = settings.aimbotMode == "legit" and "rage" or "legit"
     modeBtn.Text = settings.aimbotMode == "legit" and "MODO: LEGIT" or "MODO: RAGE"
     modeBtn.BackgroundColor3 = settings.aimbotMode == "legit" and Color3.new(0.3, 0.5, 0.8) or Color3.new(0.8, 0.3, 0.3)
-    statusLabel.Text = string.format("● AIMBOT: %s | FOV: %d", string.upper(settings.aimbotMode), settings.fovRadius)
+    statusLabel.Text = string.format("● ATIRE PARA MIRAR | %s | FOV: %d", string.upper(settings.aimbotMode), settings.fovRadius)
 end)
 
 espGlobalBtn.MouseButton1Click:Connect(function()
@@ -560,13 +549,12 @@ fovInput.FocusLost:Connect(function()
         fovLabel.Text = "🎯 FOV RADIUS: " .. settings.fovRadius
         fovCircle.Size = UDim2.new(0, settings.fovRadius * 2, 0, settings.fovRadius * 2)
         fovCircle.Position = UDim2.new(0.5, -settings.fovRadius, 0.5, -settings.fovRadius)
-        statusLabel.Text = string.format("● AIMBOT: %s | FOV: %d", string.upper(settings.aimbotMode), settings.fovRadius)
+        statusLabel.Text = string.format("● ATIRE PARA MIRAR | %s | FOV: %d", string.upper(settings.aimbotMode), settings.fovRadius)
     else
         fovInput.Text = tostring(settings.fovRadius)
     end
 end)
 
--- Minimizar/Maximizar
 local minimized = false
 minimizeBtn.MouseButton1Click:Connect(function()
     minimized = not minimized
@@ -575,10 +563,8 @@ minimizeBtn.MouseButton1Click:Connect(function()
     minimizeBtn.Text = minimized and "+" or "−"
 end)
 
--- Atualizações
 RunService.RenderStepped:Connect(updateESP)
 
--- Teclas de atalho
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
     if gameProcessed then return end
     if input.KeyCode == Enum.KeyCode.O then
@@ -590,4 +576,4 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
     end
 end)
 
-print("✅ Sistema carregado! | O=Aimbot | P=ESP | M=Modo | Círculo transparente com borda")
+print("✅ Sistema carregado! | AIMBOT ATIVADO NO CLICK | O=Toggle | P=ESP | M=Modo")
